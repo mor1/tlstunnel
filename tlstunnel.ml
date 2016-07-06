@@ -52,13 +52,15 @@ module Fd_logger = struct
     count := succ !count
 
   let aborted_to_string ab =
-    match Lwt_unix.state ab with
+    let open Lwt_unix in
+    match state ab with
     | Aborted exn -> Printexc.to_string exn
     | _ -> ""
 
   let log () =
     let opened, closed, aborted =
-      List.fold_left (fun (o, c, a) x -> match Lwt_unix.state x with
+      let open Lwt_unix in
+      List.fold_left (fun (o, c, a) x -> match state x with
           | Opened -> (x :: o, c, a)
           | Closed -> (o, x :: c, a)
           | Aborted _ -> (o, c, x :: a))
@@ -90,7 +92,9 @@ module Haproxy1 = struct
     let own_sockaddr = Lwt_unix.getsockname socket in
     let peer_sockaddr = Lwt_unix.getpeername socket in
     let protocol_string =
-      begin match Unix.domain_of_sockaddr own_sockaddr with
+      begin
+        let open Unix in
+        match domain_of_sockaddr own_sockaddr with
         | PF_UNIX  -> failwith "TODO unix socket log and drop"
         | PF_INET  -> "TCP4"
         | PF_INET6 -> "TCP6"
@@ -188,7 +192,7 @@ let worker config backend log s haproxy1 logfds debug trace () =
       log ("connection established (" ^ (tls_info t) ^ ")") ;
       let stats = Stats.new_stats () in
 
-      let fd = Lwt_unix.socket PF_INET SOCK_STREAM 0 in
+      let fd = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
       if logfds then Fd_logger.add_fd fd ;
       let close = safe_close closing (Some t) fd in
 
@@ -297,8 +301,8 @@ open Cmdliner
 
 let resolve name =
   let he = Unix.gethostbyname name in
-  if Array.length he.h_addr_list > 0 then
-    he.h_addr_list.(0)
+  if Array.length he.Unix.h_addr_list > 0 then
+    he.Unix.h_addr_list.(0)
   else
     let msg = "no address for " ^ name in
     invalid_arg msg
