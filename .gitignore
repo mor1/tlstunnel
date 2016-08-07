@@ -20,3 +20,10 @@ setup.data
 setup.log
 
 .*.swp
+
+# mirage droppings
+/mirage/Makefile
+/mirage/key_gen.ml
+/mirage/log
+/mirage/main.ml
+/mirage/tlstunnel*.x*
