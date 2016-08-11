@@ -27,3 +27,5 @@ setup.log
 /mirage/log
 /mirage/main.ml
 /mirage/tlstunnel*.x*
+/mirage/mir-tlstunnel
+/mirage/keys/
