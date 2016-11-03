@@ -1,31 +1,7 @@
-*.annot
-*.cmo
-*.cma
-*.cmi
-*.a
-*.o
-*.cmx
-*.cmxs
-*.cmxa
-
 # ocamlbuild working directory
 _build/
 
 # ocamlbuild targets
 *.byte
 *.native
-
-# oasis generated files
-setup.data
-setup.log
-
-.*.swp
-
-# mirage droppings
-/mirage/Makefile
-/mirage/key_gen.ml
-/mirage/log
-/mirage/main.ml
-/mirage/tlstunnel*.x*
-/mirage/mir-tlstunnel
-/mirage/keys/
+*.install

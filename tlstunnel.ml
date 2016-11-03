@@ -52,18 +52,16 @@ module Fd_logger = struct
     count := succ !count
 
   let aborted_to_string ab =
-    let open Lwt_unix in
-    match state ab with
-    | Aborted exn -> Printexc.to_string exn
-    | _ -> ""
+    match Lwt_unix.state ab with
+      | Lwt_unix.Aborted exn -> Printexc.to_string exn
+      | _ -> ""
 
   let log () =
     let opened, closed, aborted =
-      let open Lwt_unix in
-      List.fold_left (fun (o, c, a) x -> match state x with
-          | Opened -> (x :: o, c, a)
-          | Closed -> (o, x :: c, a)
-          | Aborted _ -> (o, c, x :: a))
+      List.fold_left (fun (o, c, a) x -> match Lwt_unix.state x with
+          | Lwt_unix.Opened -> (x :: o, c, a)
+          | Lwt_unix.Closed -> (o, x :: c, a)
+          | Lwt_unix.Aborted _ -> (o, c, x :: a))
         ([], [], []) !fds
     in
     fds := List.append opened aborted ;
@@ -92,12 +90,10 @@ module Haproxy1 = struct
     let own_sockaddr = Lwt_unix.getsockname socket in
     let peer_sockaddr = Lwt_unix.getpeername socket in
     let protocol_string =
-      begin
-        let open Unix in
-        match domain_of_sockaddr own_sockaddr with
-        | PF_UNIX  -> failwith "TODO unix socket log and drop"
-        | PF_INET  -> "TCP4"
-        | PF_INET6 -> "TCP6"
+      begin match Unix.domain_of_sockaddr own_sockaddr with
+      | Unix.PF_UNIX  -> failwith "TODO unix socket log and drop"
+      | Unix.PF_INET  -> "TCP4"
+      | Unix.PF_INET6 -> "TCP6"
       end in
     let get_addr_port = function
       | Lwt_unix.ADDR_INET (inet_addr , port)
@@ -139,9 +135,11 @@ let rec read_write debug log closing close cnt ic oc =
       cnt l ;
       if l > 0 then
         let s = Bytes.sub buf 0 l in
-        (if debug then log ("read " ^ string_of_int l ^ " bytes: " ^ s)) ;
-        Lwt_io.write oc s >|= fun () ->
-        (if debug then log "wrote them") ;
+        (if debug then
+           log (String.concat " " ["read"; string_of_int l; "bytes:"; Bytes.to_string s])) ;
+        Lwt_io.write_from oc s 0 l
+        >|= fun n ->
+        (if debug then log (Printf.sprintf "wrote %d bytes" n)) ;
         Continue
       else
         begin
@@ -187,40 +185,40 @@ let safe_close closing tls fd () =
 let worker config backend log s haproxy1 logfds debug trace () =
   let closing = ref false in
   Lwt.catch (fun () ->
-      Tls_lwt.Unix.server_of_fd config ?trace s >>= fun t ->
-      let ic, oc = Tls_lwt.of_t t in
-      log ("connection established (" ^ (tls_info t) ^ ")") ;
-      let stats = Stats.new_stats () in
+    Tls_lwt.Unix.server_of_fd config ?trace s >>= fun t ->
+    let ic, oc = Tls_lwt.of_t t in
+    log ("connection established (" ^ (tls_info t) ^ ")") ;
+    let stats = Stats.new_stats () in
 
-      let fd = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
-      if logfds then Fd_logger.add_fd fd ;
-      let close = safe_close closing (Some t) fd in
+    let fd = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
+    if logfds then Fd_logger.add_fd fd ;
+    let close = safe_close closing (Some t) fd in
 
-      Lwt.catch (fun () ->
-          Lwt_unix.connect fd backend >>= fun () ->
-          let pic = Lwt_io.of_fd ~close ~mode:Lwt_io.Input fd
-          and poc = Lwt_io.of_fd ~close ~mode:Lwt_io.Output fd
-          in begin match haproxy1 with
-            | true ->
-              let haproxy1_header = Haproxy1.make_header s in
-              Lwt_io.write poc haproxy1_header
-            | false -> Lwt.return ()
-          end
-          >>= fun () ->
-          Lwt.join [
-            read_write debug log closing close (Stats.inc_read stats) ic poc ;
-            read_write debug log closing close (Stats.inc_written stats) pic oc
-          ] >|= fun () ->
-          log ("connection closed " ^ (Stats.print_stats stats))
-        )
-        (function
-          | Unix.Unix_error (e, f, _) ->
-            let msg = Unix.error_message e in
-            log ("backend refused connection: " ^  msg ^ " while calling " ^ f) ;
-            close ()
-          | exn ->
-            close () >|= fun () ->
-            log ("received inner exception " ^ Printexc.to_string exn)))
+    Lwt.catch (fun () ->
+      Lwt_unix.connect fd backend >>= fun () ->
+      let pic = Lwt_io.of_fd ~close ~mode:Lwt_io.Input fd
+      and poc = Lwt_io.of_fd ~close ~mode:Lwt_io.Output fd
+      in begin match haproxy1 with
+      | true ->
+        let haproxy1_header = Haproxy1.make_header s in
+        Lwt_io.write poc haproxy1_header
+      | false -> Lwt.return ()
+      end
+      >>= fun () ->
+      Lwt.join [
+        read_write debug log closing close (Stats.inc_read stats) ic poc ;
+        read_write debug log closing close (Stats.inc_written stats) pic oc
+      ] >|= fun () ->
+      log ("connection closed " ^ (Stats.print_stats stats))
+      )
+      (function
+        | Unix.Unix_error (e, f, _) ->
+          let msg = Unix.error_message e in
+          log ("backend refused connection: " ^  msg ^ " while calling " ^ f) ;
+          close ()
+        | exn ->
+          close () >|= fun () ->
+          log ("received inner exception " ^ Printexc.to_string exn)))
     (fun exn ->
        safe_close closing None s () >|= fun () ->
        log ("failed to establish TLS connection: " ^ Printexc.to_string exn))
@@ -378,7 +376,7 @@ let cmd =
     `P "$(b,stunnel)(1), $(b,stud)(1)" ]
   in
   Term.(pure run_server $ frontend $ backend $ certificate $ privkey $ haproxy1 $ log $ quiet $ logfds $ debug),
-  Term.info "tlstunnel" ~version:"0.1.4" ~doc ~man
+  Term.info "tlstunnel" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () =
   match Term.eval cmd
