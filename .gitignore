@@ -5,3 +5,18 @@ _build/
 *.byte
 *.native
 *.install
+
+# mirage outputs
+mirage/Makefile
+mirage/key_gen.ml
+mirage/main.ml
+mirage/log
+mirage/mir-tlstunnel
+mirage/tlstunnel.xe
+mirage/tlstunnel.xl
+mirage/tlstunnel.xl.in
+mirage/tlstunnel_libvirt.xml
+
+# mirage secret keys
+mirage/keys/*
+!mirage/keys/README.md
